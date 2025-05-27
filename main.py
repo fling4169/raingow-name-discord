@@ -15,11 +15,11 @@ if any(token is None for token in TOKENS):
 
 intents = Intents.default()
 
-# Shared hue across bots to maintain gradient continuity
-shared_hue = 0.0
+# Shared mutable state for hue
+shared = {"hue": 0.0}
 hue_lock = asyncio.Lock()
 steps = 360  # Number of hue steps in full cycle
-update_interval = 1.0  # Update frequency (1 per second per bot)
+update_interval = 1.0  # 1 second per bot update, staggered
 
 async def color_cycle(bot_index: int, bot_token: str):
     bot = commands.Bot(command_prefix="!", intents=intents)
@@ -27,17 +27,16 @@ async def color_cycle(bot_index: int, bot_token: str):
     @bot.event
     async def on_ready():
         print(f"Bot {bot_index+1} logged in as {bot.user}")
-        nonlocal shared_hue
-
-        # Stagger start by bot index
+        
+        # Stagger start so bots update every second in order
         await asyncio.sleep(bot_index)
 
         while True:
             async with hue_lock:
-                hue = shared_hue
-                shared_hue = (shared_hue + 1 / steps) % 1.0
+                hue = shared["hue"]
+                shared["hue"] = (shared["hue"] + 1 / steps) % 1.0
 
-            # Apply hue offset to stagger colors between bots
+            # Calculate each bot’s gradient-shifted hue
             bot_hue = (hue + (bot_index / BOT_COUNT)) % 1.0
             r, g, b = colorsys.hsv_to_rgb(bot_hue, 1, 1)
             color_int = (int(r * 255) << 16) + (int(g * 255) << 8) + int(b * 255)
@@ -55,6 +54,7 @@ async def color_cycle(bot_index: int, bot_token: str):
             else:
                 print(f"Bot {bot_index+1}: Guild not found")
 
+            # Wait BOT_COUNT seconds before this bot runs again
             await asyncio.sleep(BOT_COUNT * update_interval)
 
     await bot.login(bot_token)
