@@ -8,11 +8,11 @@ load_dotenv()
 
 # Environment variables for bot tokens
 TOKENS = [
-    os.getenv("BOT_TOKEN_1"),
-    os.getenv("BOT_TOKEN_2"),
-    os.getenv("BOT_TOKEN_3"),
-    os.getenv("BOT_TOKEN_4"),
-    os.getenv("BOT_TOKEN_5"),
+    os.getenv("DISCORD_TOKEN_1"),
+    os.getenv("DISCORD_TOKEN_2"),
+    os.getenv("DISCORD_TOKEN_3"),
+    os.getenv("DISCORD_TOKEN_4"),
+    os.getenv("DISCORD_TOKEN_5"),
 ]
 
 GUILD_ID = int(os.getenv("GUILD_ID"))
