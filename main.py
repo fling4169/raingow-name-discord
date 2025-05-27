@@ -13,7 +13,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-ROLE_ID = 123456789012345678  # <<< Paste your actual role ID here
+ROLE_ID = 1376734144658407555  # <<< Paste your actual role ID here
 
 # Generate 100 rainbow colors
 def generate_rainbow_colors(n=100):
@@ -29,7 +29,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
     change_color.start()
 
-@tasks.loop(seconds=4)
+@tasks.loop(seconds=3)
 async def change_color():
     for guild in bot.guilds:
         role = guild.get_role(ROLE_ID)
