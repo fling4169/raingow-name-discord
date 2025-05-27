@@ -1,95 +1,88 @@
 import os
 import asyncio
-import threading
 import colorsys
-from flask import Flask
-import discord
 from discord.ext import commands
-from dotenv import load_dotenv
+from discord import Intents
+from aiohttp import web
 
-load_dotenv()  # Only needed if you use a .env file locally
+BOT_COUNT = 5
+ROLE_ID = int(os.getenv("ROLE_ID"))  # Put your role ID here in your env variables
 
-# Flask app to keep Render happy
-app = Flask("")
+# Get tokens from env: DISCORD_TOKEN_1 ... DISCORD_TOKEN_5
+TOKENS = [os.getenv(f"DISCORD_TOKEN_{i+1}") for i in range(BOT_COUNT)]
 
-@app.route("/")
-def home():
-    return "Rainbow role bot is running."
+if any(token is None for token in TOKENS):
+    raise ValueError("One or more bot tokens are missing in environment variables.")
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8000)
+intents = Intents.default()
 
-# Helper: Convert HSV color to Discord color object
-def hsv_to_discord_color(h, s=1.0, v=1.0):
-    r, g, b = colorsys.hsv_to_rgb(h, s, v)
-    return discord.Color.from_rgb(int(r * 255), int(g * 255), int(b * 255))
-
-async def rainbow_role_task(bot, guild_id, role_id):
-    await bot.wait_until_ready()
-    guild = bot.get_guild(guild_id)
-    if not guild:
-        print(f"[{bot.user}] Guild {guild_id} not found.")
-        return
-    role = guild.get_role(role_id)
-    if not role:
-        print(f"[{bot.user}] Role {role_id} not found.")
-        return
-
-    h = 0.0
-    while not bot.is_closed():
-        color = hsv_to_discord_color(h)
-        try:
-            await role.edit(color=color, reason="Rainbow role color cycling")
-            print(f"[{bot.user}] Updated role color to hue {h:.2f}")
-        except Exception as e:
-            print(f"[{bot.user}] Failed to update role color: {e}")
-
-        h += 0.005  # Smaller increments for smoother transitions
-        if h >= 1.0:
-            h = 0.0
-        await asyncio.sleep(5)  # Adjust delay for speed of color change
-
-async def run_bot(token, guild_id, role_id):
-    intents = discord.Intents.default()
-    intents.guilds = True
-    intents.guild_messages = True
-    intents.guilds = True
-    intents.guild_messages = True
-
+async def color_cycle(bot_index: int, bot_token: str):
     bot = commands.Bot(command_prefix="!", intents=intents)
+    await bot.login(bot_token)
 
-    # Start the rainbow task when the bot is ready
+    # Each bot controls the same role on the same guild, so you must have the guild id env var too:
+    GUILD_ID = int(os.getenv("GUILD_ID"))
+    
+    # Total steps to complete full hue cycle, adjust for smoothness and speed:
+    steps = 360  
+    delay = 1.0  # seconds per update per bot
+
+    # Start staggered by bot index fraction of delay:
+    await asyncio.sleep(bot_index * (delay / BOT_COUNT))
+
+    hue = bot_index * (1.0 / BOT_COUNT)  # start hue offset between bots [0.0 - 1.0)
+
     @bot.event
     async def on_ready():
-        print(f"{bot.user} has connected.")
-        # Start color cycling task in background
-        bot.loop.create_task(rainbow_role_task(bot, guild_id, role_id))
+        print(f"Bot {bot_index+1} logged in as {bot.user}!")
+        nonlocal hue
+        while True:
+            guild = bot.get_guild(GUILD_ID)
+            if guild is None:
+                print(f"Bot {bot_index+1}: Guild not found!")
+                await asyncio.sleep(delay)
+                continue
 
-    await bot.start(token)
+            role = guild.get_role(ROLE_ID)
+            if role is None:
+                print(f"Bot {bot_index+1}: Role not found!")
+                await asyncio.sleep(delay)
+                continue
+            
+            # Convert hue to RGB (0-255)
+            r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+            color_int = (int(r * 255) << 16) + (int(g * 255) << 8) + int(b * 255)
+
+            try:
+                await role.edit(color=color_int, reason="Rainbow role color cycling")
+            except Exception as e:
+                print(f"Bot {bot_index+1} failed to update role color: {e}")
+
+            # Increment hue smoothly
+            hue += 1 / steps
+            if hue >= 1.0:
+                hue -= 1.0
+
+            await asyncio.sleep(delay)
+
+    await bot.connect()
 
 async def main():
-    # Start Flask in separate thread so Render web service doesn't crash
-    threading.Thread(target=run_flask, daemon=True).start()
-
-    # Your guild and role IDs here (replace with your actual IDs)
-    GUILD_ID = int(os.environ.get("GUILD_ID"))
-    ROLE_ID = int(os.environ.get("ROLE_ID"))
-
-    # Collect tokens from environment variables
-    tokens = []
-    for i in range(1, 6):
-        t = os.environ.get(f"DISCORD_TOKEN_{i}")
-        if t:
-            tokens.append(t)
-        else:
-            print(f"Warning: DISCORD_TOKEN_{i} not found in environment variables.")
-
-    if not tokens:
-        print("No Discord tokens found. Exiting.")
-        return
-
     # Run all bots concurrently
-    tasks = [run_bot(token, GUILD_ID, ROLE_ID) for token in tokens]
+    tasks = [color_cycle(i, token) for i, token in enumerate(TOKENS)]
+    
+    # Simple web server to keep Render happy (runs on port 8000)
+    async def handle(request):
+        return web.Response(text="Rainbow role bots running.")
+
+    app = web.Application()
+    app.add_routes([web.get('/', handle)])
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    await site.start()
+
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
