@@ -14,67 +14,65 @@ if any(token is None for token in TOKENS):
     raise ValueError("One or more bot tokens are missing in environment variables.")
 
 intents = Intents.default()
-intents.guilds = True
-intents.guild_messages = True
 
-steps = 360  # total hue steps
-hue_state = [i * (1 / BOT_COUNT) for i in range(BOT_COUNT)]
-delay = 1.0  # 1 update per second total
+# Shared hue across bots to maintain gradient continuity
+shared_hue = 0.0
+hue_lock = asyncio.Lock()
+steps = 360  # Number of hue steps in full cycle
+update_interval = 1.0  # Update frequency (1 per second per bot)
 
-async def color_cycle(bot_index: int, token: str):
+async def color_cycle(bot_index: int, bot_token: str):
     bot = commands.Bot(command_prefix="!", intents=intents)
 
     @bot.event
     async def on_ready():
-        print(f"Bot {bot_index + 1} logged in as {bot.user}")
+        print(f"Bot {bot_index+1} logged in as {bot.user}")
+        nonlocal shared_hue
 
-        await asyncio.sleep(bot_index)  # staggered start
+        # Stagger start by bot index
+        await asyncio.sleep(bot_index)
 
         while True:
-            guild = bot.get_guild(GUILD_ID)
-            if not guild:
-                print(f"Bot {bot_index + 1}: Guild not found")
-                await asyncio.sleep(delay * BOT_COUNT)
-                continue
+            async with hue_lock:
+                hue = shared_hue
+                shared_hue = (shared_hue + 1 / steps) % 1.0
 
-            role = guild.get_role(ROLE_ID)
-            if not role:
-                print(f"Bot {bot_index + 1}: Role not found")
-                await asyncio.sleep(delay * BOT_COUNT)
-                continue
-
-            # Use shared hue_state to keep continuity
-            hue = hue_state[bot_index]
-            r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+            # Apply hue offset to stagger colors between bots
+            bot_hue = (hue + (bot_index / BOT_COUNT)) % 1.0
+            r, g, b = colorsys.hsv_to_rgb(bot_hue, 1, 1)
             color_int = (int(r * 255) << 16) + (int(g * 255) << 8) + int(b * 255)
 
-            try:
-                await role.edit(color=color_int, reason="Rainbow cycle")
-            except Exception as e:
-                print(f"Bot {bot_index + 1} failed to edit role: {e}")
+            guild = bot.get_guild(GUILD_ID)
+            if guild:
+                role = guild.get_role(ROLE_ID)
+                if role:
+                    try:
+                        await role.edit(color=color_int, reason="Rainbow role update")
+                    except Exception as e:
+                        print(f"Bot {bot_index+1} failed to update role color: {e}")
+                else:
+                    print(f"Bot {bot_index+1}: Role not found")
+            else:
+                print(f"Bot {bot_index+1}: Guild not found")
 
-            # Advance hue for this bot only
-            hue = (hue + 1 / steps) % 1.0
-            hue_state[bot_index] = hue
+            await asyncio.sleep(BOT_COUNT * update_interval)
 
-            await asyncio.sleep(delay * BOT_COUNT)  # Each bot updates every 5s
-
-    await bot.connect(token)
-
+    await bot.login(bot_token)
+    await bot.connect()
 
 async def main():
     tasks = [color_cycle(i, token) for i, token in enumerate(TOKENS)]
 
-    # Web server to keep Render alive
+    # Render health check web server
     async def handle(request):
-        return web.Response(text="Rainbow bot is alive.")
+        return web.Response(text="Rainbow role bot running.")
 
     app = web.Application()
-    app.add_routes([web.get('/', handle)])
+    app.add_routes([web.get("/", handle)])
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8000)
+    site = web.TCPSite(runner, "0.0.0.0", 8000)
     await site.start()
 
     await asyncio.gather(*tasks)
