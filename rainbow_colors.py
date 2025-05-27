@@ -1,3 +1,4 @@
+# Optional utility file
 import discord
 import colorsys
 
