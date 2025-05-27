@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 import itertools
+import colorsys
 from flask import Flask
 import threading
 import os
@@ -12,24 +13,23 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Rainbow color cycle
-rainbow_colors = itertools.cycle([
-    discord.Color.red(),
-    discord.Color.orange(),
-    discord.Color.gold(),
-    discord.Color.green(),
-    discord.Color.blue(),
-    discord.Color.purple()
-])
+ROLE_NAME = "Certified Fag"  # Your rainbow role name
 
-ROLE_NAME = "Rainbow"  # Change this if needed
+# Generate 100 smoothly-transitioning rainbow colors
+def generate_rainbow_colors(n=100):
+    return [
+        discord.Color.from_rgb(*[int(c * 255) for c in colorsys.hsv_to_rgb(i / n, 1, 1)])
+        for i in range(n)
+    ]
+
+rainbow_colors = itertools.cycle(generate_rainbow_colors(100))
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     change_color.start()
 
-@tasks.loop(seconds=5)
+@tasks.loop(seconds=5)  # Adjust speed here if you want it faster/slower
 async def change_color():
     for guild in bot.guilds:
         role = discord.utils.get(guild.roles, name=ROLE_NAME)
@@ -37,14 +37,16 @@ async def change_color():
             try:
                 await role.edit(color=next(rainbow_colors))
             except discord.Forbidden:
-                print(f"Missing permissions to edit role '{ROLE_NAME}' in {guild.name}")
+                print(f"Missing permissions to edit '{ROLE_NAME}' in {guild.name}")
+            except Exception as e:
+                print(f"Error editing role in {guild.name}: {e}")
 
-# Flask web server for uptime pings
+# Flask server for uptime pings
 app = Flask("")
 
 @app.route("/")
 def home():
-    return "Rainbow Bot is running!"
+    return "🌈 Rainbow Role Bot is up and fabulous!"
 
 def run_flask():
     app.run(host="0.0.0.0", port=8080)
@@ -53,6 +55,6 @@ def start_flask():
     thread = threading.Thread(target=run_flask)
     thread.start()
 
-# Start Flask then run bot
+# Start web server and then the bot
 start_flask()
 bot.run(os.environ["DISCORD_TOKEN"])
