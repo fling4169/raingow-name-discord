@@ -1,38 +1,49 @@
-import os
-import asyncio
 import discord
 from discord.ext import commands, tasks
-from rainbow_colors import generate_rainbow_colors
+import colorsys
+import asyncio
 
 class RainbowBot(commands.Bot):
-    def __init__(self, token, role_id, offset_seconds=0):
+    def __init__(self, token, role_id, update_interval=5):
         intents = discord.Intents.all()
         super().__init__(command_prefix='!', intents=intents)
         self.token = token
         self.role_id = role_id
-        self.offset_seconds = offset_seconds
+        self.update_interval = update_interval
         self.color_index = 0
-        self.colors = generate_rainbow_colors()
+        self.change_color_loop = tasks.loop(seconds=self.update_interval)(self.change_color)
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
-        print('------')
         if not self.change_color_loop.is_running():
-            await asyncio.sleep(self.offset_seconds)
             self.change_color_loop.start()
 
-    @tasks.loop(seconds=10.0)
-    async def change_color_loop(self):
-        for guild in self.guilds:
-            role = guild.get_role(self.role_id)
-            if role:
-                try:
-                    await role.edit(color=self.colors[self.color_index])
-                except discord.Forbidden:
-                    print(f"Permission denied to edit role in {guild.name}")
-                except Exception as e:
-                    print(f"Error editing role in {guild.name}: {e}")
-        self.color_index = (self.color_index + 1) % len(self.colors)
+    async def change_color(self):
+        guilds = self.guilds
+        if not guilds:
+            return  # Not connected to any guild yet
+        guild = guilds[0]  # Assume first guild (or adapt if multiple guilds)
+
+        role = guild.get_role(self.role_id)
+        if role is None:
+            print(f"Role ID {self.role_id} not found in guild {guild.name}")
+            return
+
+        # Generate rainbow color based on color_index
+        n_colors = 360
+        hue = (self.color_index % n_colors) / n_colors
+        r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+        color = discord.Color.from_rgb(int(r * 255), int(g * 255), int(b * 255))
+
+        try:
+            await role.edit(color=color, reason="Rainbow role color update")
+            # print(f"Changed color to {color} on {guild.name}")
+        except discord.Forbidden:
+            print("Missing permissions to edit the role.")
+        except discord.HTTPException as e:
+            print(f"Failed to update role color: {e}")
+
+        self.color_index += 1
 
     def run_bot(self):
         if not self.token or self.token == "your-token":
