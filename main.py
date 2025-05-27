@@ -28,7 +28,7 @@ def run_flask():
 for i, token in enumerate(TOKENS):
     if token:
         bot = RainbowBot(token, ROLE_ID, offset_seconds=i)
-        threading.Thread(target=bot.run).start()
+        threading.Thread(target=bot.run_bot).start()
 
 # Start Flask server last
 threading.Thread(target=run_flask).start()
