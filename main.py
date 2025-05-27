@@ -3,7 +3,7 @@ import threading
 from flask import Flask
 from rainbow_bot import RainbowBot
 
-ROLE_ID = 123456789012345678  # Replace with your role ID
+ROLE_ID = 1376734144658407555  # Replace with your role ID
 
 # Bot tokens from env
 TOKENS = [
