@@ -15,60 +15,55 @@ if any(token is None for token in TOKENS):
 
 intents = Intents.default()
 
-async def color_cycle(bot_index: int, token: str):
+# Constants for the color cycle
+STEPS = 360  # Number of distinct colors in the rainbow cycle
+DELAY = 1.2  # Time between updates per bot (seconds)
+
+async def color_cycle(bot_index: int, bot_token: str):
     bot = commands.Bot(command_prefix="!", intents=intents)
-
-    # Total hue steps and staggered timing
-    total_steps = 360
-    update_delay = 1.0  # Each bot tries to edit every second
-
-    # Hue offset for each bot to maintain gradience
-    hue_step = 1 / total_steps
-    start_hue = (bot_index * (1 / BOT_COUNT)) % 1.0
-    current_hue = start_hue
 
     @bot.event
     async def on_ready():
-        print(f"Bot {bot_index+1} logged in as {bot.user}")
-        nonlocal current_hue
+        print(f"Bot {bot_index+1} logged in as {bot.user}!")
+        hue_offset = bot_index / BOT_COUNT
+        hue = hue_offset
+
         while True:
             guild = bot.get_guild(GUILD_ID)
             if guild is None:
-                print(f"Bot {bot_index+1}: Guild not found!")
-                await asyncio.sleep(update_delay)
+                print(f"Bot {bot_index+1}: Guild not found.")
+                await asyncio.sleep(DELAY)
                 continue
 
             role = guild.get_role(ROLE_ID)
             if role is None:
-                print(f"Bot {bot_index+1}: Role not found!")
-                await asyncio.sleep(update_delay)
+                print(f"Bot {bot_index+1}: Role not found.")
+                await asyncio.sleep(DELAY)
                 continue
 
-            # Convert HSV to RGB and then to Discord's color int
-            r, g, b = colorsys.hsv_to_rgb(current_hue, 1, 1)
-            color = (int(r * 255) << 16) + (int(g * 255) << 8) + int(b * 255)
+            r, g, b = colorsys.hsv_to_rgb(hue, 1, 1)
+            color_int = (int(r * 255) << 16) + (int(g * 255) << 8) + int(b * 255)
 
             try:
-                await role.edit(color=color, reason="Rainbow role update")
+                await role.edit(color=color_int, reason="Rainbow role color cycling")
             except Exception as e:
-                print(f"Bot {bot_index+1} error editing role: {e}")
+                print(f"Bot {bot_index+1} failed to update role color: {e}")
 
-            # Move hue forward smoothly
-            current_hue = (current_hue + hue_step * BOT_COUNT) % 1.0
-            await asyncio.sleep(update_delay)
+            hue = (hue + 1 / STEPS) % 1.0
+            await asyncio.sleep(DELAY)
 
-    await bot.start(token)
+    await bot.start(bot_token)
 
 async def main():
-    # Launch all bot tasks
     tasks = [color_cycle(i, token) for i, token in enumerate(TOKENS)]
 
-    # Simple web server to satisfy Render's web service requirement
+    # Web server to keep Render happy
     async def handle(request):
-        return web.Response(text="Rainbow role bots are running.")
+        return web.Response(text="Rainbow role bots running.")
 
     app = web.Application()
     app.add_routes([web.get('/', handle)])
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 8000)
