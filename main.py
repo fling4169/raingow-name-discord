@@ -1,9 +1,8 @@
 import os
-import time
 import threading
-import socket
+import asyncio
 from flask import Flask
-from rainbow_bot import RainbowBot
+from rainbow_bot import create_bot
 
 ROLE_ID = 1376734144658407555  # Replace with your actual role ID
 
@@ -24,42 +23,17 @@ def index():
 def run_flask():
     app.run(host="0.0.0.0", port=8080)
 
-def start_bot_with_retry(token, role_id, interval, max_retries=5):
-    attempt = 0
-    while attempt < max_retries:
-        try:
-            bot = RainbowBot(token, role_id, update_interval=interval)
-            print(f"[INFO] Starting bot with interval {interval}s (Attempt {attempt + 1})...")
-            bot.run_bot()
-            break  # Exit loop if successful
-        except socket.gaierror as e:
-            print(f"[ERROR] DNS resolution failed (Attempt {attempt + 1}): {e}")
-            attempt += 1
-            time.sleep(5)
-        except Exception as e:
-            print(f"[ERROR] Unexpected error: {e}")
-            break  # Don't retry for unknown exceptions
+def run_bot_instance(token, role_id, update_interval):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot = create_bot(token, role_id, update_interval)
+    loop.run_until_complete(bot.start(token))
 
-def launch_bots():
-    print("[INFO] Waiting 5 seconds before launching bots...")
-    time.sleep(5)
+# Start each bot in its own thread
+base_interval = 5
+for i, token in enumerate(TOKENS):
+    if token:
+        update_interval = base_interval + i  # e.g. 5s, 6s, ...
+        threading.Thread(target=run_bot_instance, args=(token, ROLE_ID, update_interval)).start()
 
-    base_interval = 5  # Base seconds between role updates
-
-    for i, token in enumerate(TOKENS):
-        if not token:
-            print(f"[WARN] Token {i + 1} is missing, skipping this bot.")
-            continue
-
-        interval = base_interval + i
-        delay = i * 3  # Stagger launch to avoid DNS congestion
-
-        def delayed_start(token=token, interval=interval):
-            print(f"[INFO] Launching bot {i + 1} after {delay} seconds...")
-            time.sleep(delay)
-            start_bot_with_retry(token, ROLE_ID, interval)
-
-        threading.Thread(target=delayed_start).start()
-
-threading.Thread(target=run_flask).start()
-launch_bots()
+# Run Flask app in its own thread
