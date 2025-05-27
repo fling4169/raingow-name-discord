@@ -1,11 +1,10 @@
 import os
-import threading
+from multiprocessing import Process
 from flask import Flask
 from rainbow_bot import RainbowBot
 
 ROLE_ID = 1376734144658407555  # Replace with your role ID
 
-# Bot tokens from env
 TOKENS = [
     os.environ.get("DISCORD_TOKEN_1"),
     os.environ.get("DISCORD_TOKEN_2"),
@@ -14,7 +13,6 @@ TOKENS = [
     os.environ.get("DISCORD_TOKEN_5")
 ]
 
-# Flask server for uptime
 app = Flask(__name__)
 
 @app.route("/")
@@ -24,11 +22,24 @@ def index():
 def run_flask():
     app.run(host="0.0.0.0", port=8080)
 
-# Start bots
-for i, token in enumerate(TOKENS):
-    if token:
-        bot = RainbowBot(token, ROLE_ID, offset_seconds=i)
-        threading.Thread(target=bot.run_bot).start()
+def run_bot_process(token, role_id, offset_seconds):
+    bot = RainbowBot(token, role_id, offset_seconds)
+    bot.run_bot()
 
-# Start Flask server last
-threading.Thread(target=run_flask).start()
+if __name__ == "__main__":
+    # Start the Flask server in a separate process
+    flask_process = Process(target=run_flask)
+    flask_process.start()
+
+    # Start each bot in its own process
+    processes = []
+    for i, token in enumerate(TOKENS):
+        if token:
+            p = Process(target=run_bot_process, args=(token, ROLE_ID, i))
+            p.start()
+            processes.append(p)
+
+    # Optionally join processes if you want the main process to wait
+    for p in processes:
+        p.join()
+    flask_process.join()
