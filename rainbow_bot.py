@@ -14,21 +14,22 @@ class RainbowBot:
         self.intents.guilds = True
         self.bot = commands.Bot(command_prefix="!", intents=self.intents)
 
-        @self.bot.event
-        async def on_ready():
-            print(f"✅ {self.bot.user} ready with {self.offset}s offset")
-            await asyncio.sleep(self.offset)
-            self.change_color.start()
+        self.bot.event(self.on_ready)
+        self.change_color_loop = tasks.loop(seconds=5)(self.change_color)
 
-        @tasks.loop(seconds=5)
-        async def self.change_color():
-            for guild in self.bot.guilds:
-                role = guild.get_role(self.role_id)
-                if role:
-                    try:
-                        await role.edit(color=next(self.color_cycle))
-                    except Exception as e:
-                        print(f"[{self.bot.user}] Error: {e}")
+    async def on_ready(self):
+        print(f"✅ {self.bot.user} ready with {self.offset}s offset")
+        await asyncio.sleep(self.offset)
+        self.change_color_loop.start()
+
+    async def change_color(self):
+        for guild in self.bot.guilds:
+            role = guild.get_role(self.role_id)
+            if role:
+                try:
+                    await role.edit(color=next(self.color_cycle))
+                except Exception as e:
+                    print(f"[{self.bot.user}] Error: {e}")
 
     def run(self):
         self.bot.run(self.token)
