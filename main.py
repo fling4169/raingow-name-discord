@@ -4,6 +4,7 @@ import colorsys
 from aiohttp import web
 from discord.ext import commands
 from discord import Intents
+import time
 
 BOT_COUNT = 5
 ROLE_ID = int(os.getenv("ROLE_ID"))
@@ -15,9 +16,17 @@ if any(token is None for token in TOKENS):
 
 intents = Intents.default()
 
-# Shared hue across all bots
 shared_hue = 0.0
 hue_lock = asyncio.Lock()
+last_update_time = time.time()
+
+async def watchdog():
+    global last_update_time
+    while True:
+        await asyncio.sleep(10)
+        elapsed = time.time() - last_update_time
+        if elapsed > 20:
+            print(f"[WATCHDOG] Warning: No color update in {int(elapsed)} seconds. Bots may be stalled.")
 
 async def color_cycle(bot_index: int, bot_token: str):
     bot = commands.Bot(command_prefix="!", intents=intents)
@@ -25,9 +34,9 @@ async def color_cycle(bot_index: int, bot_token: str):
     @bot.event
     async def on_ready():
         print(f"Bot {bot_index + 1} logged in as {bot.user}")
-        global shared_hue
+        global shared_hue, last_update_time
         steps = 360
-        delay = 1.0  # One update per second across all bots
+        delay = 1.0
 
         while True:
             async with hue_lock:
@@ -51,6 +60,7 @@ async def color_cycle(bot_index: int, bot_token: str):
 
             try:
                 await role.edit(color=color_int, reason="Rainbow color update")
+                last_update_time = time.time()
                 print(f"[Bot {bot_index + 1}] Updated color to {color_int:#06x}")
             except Exception as e:
                 print(f"[Bot {bot_index + 1}] Error updating role color: {e}")
@@ -61,6 +71,7 @@ async def color_cycle(bot_index: int, bot_token: str):
 
 async def main():
     tasks = [color_cycle(i, token) for i, token in enumerate(TOKENS)]
+    tasks.append(watchdog())
 
     # Keepalive web server for Render
     async def handle(request):
