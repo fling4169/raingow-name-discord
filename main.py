@@ -29,7 +29,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
     change_color.start()
 
-@tasks.loop(seconds=3)
+@tasks.loop(seconds=4)
 async def change_color():
     for guild in bot.guilds:
         role = guild.get_role(ROLE_ID)
